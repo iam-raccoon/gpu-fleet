@@ -1,31 +1,3 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=59", "wheel"]
 build-backend = "setuptools.build_meta"
-
-[project]
-name = "gpu-fleet"
-version = "0.1.0"
-description = "Live multi-machine NVIDIA GPU dashboard over SSH — one terminal view for your whole fleet."
-readme = "README.md"
-requires-python = ">=3.8"
-license = { text = "MIT" }
-authors = [{ name = "iamracco0n" }]
-keywords = ["gpu", "nvidia", "nvidia-smi", "jetson", "monitoring", "ssh", "dashboard", "tui"]
-classifiers = [
-    "Environment :: Console",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: POSIX :: Linux",
-    "Programming Language :: Python :: 3",
-    "Topic :: System :: Monitoring",
-]
-dependencies = ["rich>=13.0"]
-
-[project.scripts]
-gpu-fleet = "gpu_fleet.cli:main"
-
-[project.urls]
-Homepage = "https://github.com/iamracco0n/gpu-fleet"
-Issues = "https://github.com/iamracco0n/gpu-fleet/issues"
-
-[tool.setuptools]
-packages = ["gpu_fleet"]
