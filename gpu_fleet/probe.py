@@ -6,6 +6,11 @@ The snippet auto-detects the GPU flavour:
 
   * NVIDIA desktop/server GPUs  -> parsed from `nvidia-smi`
   * NVIDIA Jetson (Tegra)       -> read from sysfs (`nvidia-smi` is absent there)
+
+GDDR6/GDDR6X memory temperature is reported when the host has the `gddr6` tool
+(https://github.com/olealgoritme/gddr6) and grants passwordless sudo for it;
+`nvidia-smi` reports N/A for memory temperature on consumer cards. Hosts without
+it simply report no VRAM temperature.
 """
 
 from __future__ import annotations
@@ -19,6 +24,17 @@ REMOTE_SCRIPT = r"""
 if command -v nvidia-smi >/dev/null 2>&1; then
   echo "TYPE nvidia"
   nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit --format=csv,noheader,nounits 2>/dev/null
+  echo "VRAM"
+  gd=""
+  for c in "$HOME/gddr6/build/bin/gddr6" /usr/local/bin/gddr6 /usr/bin/gddr6; do
+    [ -x "$c" ] && { gd="$c"; break; }
+  done
+  [ -z "$gd" ] && gd=$(command -v gddr6 2>/dev/null)
+  # gddr6 needs root and never exits on its own, hence sudo -n + timeout.
+  if [ -n "$gd" ] && sudo -n true 2>/dev/null; then
+    sudo -n timeout 1 "$gd" 2>/dev/null | tr '\r' '\n' \
+      | grep -a 'VRAM Temps' | tail -1 | grep -oE '[0-9]+'
+  fi
   echo "PROCS"
   nvidia-smi --query-compute-apps=pid,used_memory,process_name --format=csv,noheader,nounits 2>/dev/null
 elif [ -e /sys/devices/gpu.0/load ] || [ -e /sys/devices/platform/gpu.0/load ]; then
@@ -48,9 +64,10 @@ class GpuStat:
     util: float                      # percent 0..100
     mem_used: float                  # MiB
     mem_total: float                 # MiB
-    temp: Optional[float]            # deg C
+    temp: Optional[float]            # core/die deg C
     power: Optional[float] = None    # W
     power_limit: Optional[float] = None
+    vram_temp: Optional[float] = None  # GDDR6/6X deg C, None if unavailable
 
 
 @dataclass
@@ -150,15 +167,24 @@ def _parse(name: str, out: str) -> HostStat:
 def _parse_nvidia(name: str, lines: List[str]) -> HostStat:
     gpus: List[GpuStat] = []
     procs: List[Proc] = []
+    vram_temps: List[float] = []
     section = "gpu"
     for ln in lines:
         s = ln.strip()
         if s == "TYPE nvidia":
             continue
+        if s == "VRAM":
+            section = "vram"
+            continue
         if s == "PROCS":
             section = "procs"
             continue
         if not s:
+            continue
+        if section == "vram":
+            v = _f(s)
+            if v is not None:
+                vram_temps.append(v)
             continue
         parts = [p.strip() for p in s.split(",")]
         if section == "gpu" and len(parts) >= 6:
@@ -175,6 +201,14 @@ def _parse_nvidia(name: str, lines: List[str]) -> HostStat:
         elif section == "procs" and len(parts) >= 3:
             procs.append(Proc(pid=parts[0], mem=_f(parts[1]) or 0.0,
                               name=parts[2]))
+
+    # gddr6 lists devices in PCI order, same as nvidia-smi's default index
+    # order, so pair them positionally. Mismatched counts: leave VRAM unset
+    # rather than risk showing one GPU's temperature against another.
+    if len(vram_temps) == len(gpus):
+        for g, v in zip(gpus, vram_temps):
+            g.vram_temp = v
+
     return HostStat(name, ok=True, kind="nvidia", gpus=gpus, procs=procs)
 
 

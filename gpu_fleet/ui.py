@@ -26,6 +26,18 @@ def _temp_color(t: float) -> str:
     return "green"
 
 
+def _vram_color(t: float) -> str:
+    # GDDR6X throttles around 105 C, so it runs far hotter than the core and
+    # needs its own scale — core-temp thresholds would flag healthy memory.
+    if t >= 100:
+        return "bold red"
+    if t >= 90:
+        return "red"
+    if t >= 80:
+        return "yellow"
+    return "green"
+
+
 def _bar(frac: float, width: int = 10, color: str = "green") -> Text:
     frac = max(0.0, min(1.0, frac))
     filled = int(round(frac * width))
@@ -61,18 +73,19 @@ def render(stats: List[HostStat], title: str = "gpu-fleet") -> Table:
     table.add_column("GPU", no_wrap=True, overflow="ellipsis", max_width=22)
     table.add_column("Util", justify="right")
     table.add_column("Memory")
-    table.add_column("Temp", justify="right")
+    table.add_column("Core", justify="right")
+    table.add_column("VRAM", justify="right")
     table.add_column("Power", justify="right")
     table.add_column("Processes")
 
     for h in stats:
         if not h.ok:
             table.add_row(h.name, Text("offline", style="bold red"),
-                          "", "", "", "", Text(h.error, style="red"))
+                          "", "", "", "", "", Text(h.error, style="red"))
             continue
         if h.kind == "none" or not h.gpus:
             table.add_row(h.name, Text("no GPU", style="grey50"),
-                          "", "", "", "", "")
+                          "", "", "", "", "", "")
             continue
 
         for i, g in enumerate(h.gpus):
@@ -93,6 +106,12 @@ def render(stats: List[HostStat], title: str = "gpu-fleet") -> Table:
             else:
                 temp_cell = Text(f"{g.temp:.0f}°C", style=_temp_color(g.temp))
 
+            if g.vram_temp is None:
+                vram_cell = Text("—", style="grey50")
+            else:
+                vram_cell = Text(f"{g.vram_temp:.0f}°C",
+                                 style=_vram_color(g.vram_temp))
+
             if g.power is None:
                 pow_cell = Text("—", style="grey50")
             elif g.power_limit:
@@ -106,5 +125,5 @@ def render(stats: List[HostStat], title: str = "gpu-fleet") -> Table:
 
             procs = _short_procs(h) if i == 0 else Text("")
             table.add_row(hostcell, gpu_name, util_cell, mem_cell,
-                          temp_cell, pow_cell, procs)
+                          temp_cell, vram_cell, pow_cell, procs)
     return table
