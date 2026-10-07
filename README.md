@@ -52,7 +52,7 @@ single auto-refreshing table, colour-coded by load and temperature.
 
 ```bash
 pip install --user rich
-git clone https://github.com/iamracco0n/gpu-fleet.git
+git clone https://github.com/iam-raccoon/gpu-fleet.git
 cd gpu-fleet
 pip install --user .          # installs the `gpu-fleet` command
 ```
